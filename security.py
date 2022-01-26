@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import click
 import requests
+import os
 from github import Github
 from pprint import pprint
 
@@ -16,12 +17,18 @@ from pprint import pprint
 
 # GRAPHYQL you write simple queries, get the data
 
-# find edgelab paht to make api calls with pygithub
 
-username = "edgelaboratories"
-github_url = "https://github.com/edgelaboratories"
-github_data = requests.url(github_url).json()
-pprint(github_data)
+# # using an access token
+# g = Github("access_token")
+
+# # Github Enterprise with custom hostname
+# g = Github(base_url="https://{hostname}/api/v3", login_or_token="access_token")
+
+token = os.getenv('GITHUB_TOKEN', '...')
+g = Github(token)
+repo = g.get_repo("MartinHeinz/python-project-blueprint")
+issues = repo.get_issues(state="open")
+pprint(issues.get_page(0))
 
 
 # @click.option():
