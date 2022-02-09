@@ -15,13 +15,25 @@ def active_dependabot(repos):
     for repo in repos:
         try:
             repo.get_contents(".github/dependabot.yml")
+
         except UnknownObjectException:
             inactive_bot_repos.append(repo)
         else:
             active_bot_repos.append(repo)
 
-    # print(f"These repos have active bots: {active_bot_repos}")
     return active_bot_repos, inactive_bot_repos
+
+
+def archived_repos(active_bots):
+    """Filters out the archived repos from the repos with active bots as we are not concerned about them"""
+    not_archived = []
+    for repo in active_bots:
+        if repo.archived:
+            continue
+        else:
+            not_archived.append(repo)
+
+    return not_archived
 
 
 def open_prs(active_bots):
@@ -41,13 +53,32 @@ def open_prs(active_bots):
 
     return open_prs_no, open_prs_list
 
-    # g.get_repo("edgelaboratories/fusion").get_pull(3).raw_data
-    # {'user': {'login': 'vthiery'} }
-    # x = g.get_repo("edgelaboratories/fusion").get_pull(3).raw_data
-    # print(x["user"]["login"])
-    # In [103]: if x["user"]["login"] == "vthiery":
-    #  print("yes")
-    return
+
+def availability(active_bots):
+    """Returns if a repo that contains an active bot is private or public"""
+    private_repos = []
+    public_repos = []
+    for repo in active_bots:
+        if repo.private:
+            private_repos.append(repo)
+        else:
+            public_repos.append(repo)
+
+    return private_repos, public_repos
+
+
+def forked_repo(active_bots):
+    """Returns if a repo that contains an active bot is a fork"""
+    forked_repos = []
+    not_forked = []
+    for repo in active_bots:
+        if repo.fork:
+            forked_repos.append(repo)
+        else:
+            not_forked.append(repo)
+
+    print(f"Forked repos: {forked_repos}")
+    print(f"Not Forked repos: {not_forked}")
 
 
 def main():
@@ -58,24 +89,29 @@ def main():
         g.get_repo("edgelaboratories/fusion"),
         g.get_repo("edgelaboratories/ops-tests"),
         g.get_repo("edgelaboratories/nomad-job-exec"),
-        g.get_repo("edgelaboratories/beat-exporter")
+        g.get_repo("edgelaboratories/universes-monitor")
     ]
 
     active_bots, inactive = active_dependabot(repos)
     print(f"Repos with an active bot: {active_bots}")
     print(f"Repos with an inactive bot: {inactive}")
+    print()
 
-    # branch_name(repo_names)
-    # repo.edit(private=False)
-    # g.get_repo("edgelaboratories/fusion").archived
-    # g.get_repo("edgelaboratories/fusion").fork returns boolean or .get_forks()
-
-    # open_prs, open_prs_list = open_prs(active_bots)
-    # print(f"Open prs: {open_prs}, Open prs list: {open_prs_list}")
+    not_archived = archived_repos(active_bots)
+    print(f"Open PRs, with active bot, that are not archived: {not_archived}")
+    print()
 
     open_prs_no, open_prs_list = open_prs(active_bots)
     print(f"There are {open_prs_no} open PRs")
     print(f"Open PRs: {open_prs_list}")
+    print()
+
+    private_repos, public_repos = availability(active_bots)
+    print(f"Private repos with active bots: {private_repos}")
+    print(f"Public repos with active bots: {public_repos}")
+
+    forked_repo(active_bots)
+    # forked_private_repos(private_repos)
 
 
 if __name__ == "__main__":
