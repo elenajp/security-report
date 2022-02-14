@@ -1,10 +1,16 @@
 import requests
 import os
+from pprint import pprint
 
 API_URL = "https://api.github.com"
 
 
+def table(repos):
+    pass
+
+
 def main():
+    """Uses the GitHub API to get the repo name, if the repo has an active dependabot, whether the repo is public or private, if the base branch is protected and appends to the list repos"""
     token = os.environ['GITHUB_TOKEN']
 
     session = requests.Session()
@@ -13,8 +19,7 @@ def main():
     resp = session.get(f"{API_URL}/orgs/edgelaboratories/repos")
     resp.raise_for_status()
     gh_repos = [r for r in resp.json() if r["name"] in [
-        "marketdata", "ops-tests", "fustion", "ops-docs", "goliath"]]
-    # gh_repos = resp.json()
+        "marketdata", "ops-tests", "ops-docs", "goliath", "fusion"]]
 
     repos = []
     active_bot_repos = []
@@ -32,24 +37,21 @@ def main():
         else:
             repo["active_debendabot"] = '403 Forbidden'
 
-        if gh_repo['private'] == True:
-            repo['visibility'] = 'private'
+        if gh_repo["visibility"] == "private":
+            repo["visibility"] = "private"
         else:
-            repo['visibility'] = 'public'
+            repo["visibility"] = "public"
+
+        res = session.get(
+            f"{API_URL}/repos/edgelaboratories/{repo['name']}/branches")
+        data = res.json()
+        for rep in data:
+            if rep['protected'] == True:
+                repo["protected"] = True
+            else:
+                repo["protected"] = False
 
     print(repos)
-    print()
-    print()
-    # return active_bot_repos
-    print(active_bot_repos)
-
-    # repos will be something like
-    # [
-    #    {"name": "ops-tests", "active_dependabot": False, },
-    #    {"name": "arcanist", "active_dependabot": True, }
-    # ]
-    #
-    # Fancy display
 
 
 if __name__ == "__main__":
