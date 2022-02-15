@@ -1,12 +1,16 @@
 import requests
 import os
 from pprint import pprint
+from tabulate import tabulate
 
 API_URL = "https://api.github.com"
 
 
 def table(repos):
-    pass
+    table = repos
+    tabulate_table = tabulate(table, headers='keys', tablefmt="fancy_grid")
+    return tabulate_table
+    # change this to return and print in main function, add docstring
 
 
 def main():
@@ -23,9 +27,11 @@ def main():
 
     repos = []
     active_bot_repos = []
+    update_prs = []
     for gh_repo in gh_repos:
         repo = {"name": gh_repo["name"]}
         repos.append(repo)
+        # pprint(gh_repos[0])
 
         resp = session.get(
             f"{API_URL}/repos/edgelaboratories/{repo['name']}/contents/.github/dependabot.yml")
@@ -42,16 +48,24 @@ def main():
         else:
             repo["visibility"] = "public"
 
-        res = session.get(
+        resp = session.get(
             f"{API_URL}/repos/edgelaboratories/{repo['name']}/branches")
-        data = res.json()
-        for rep in data:
-            if rep['protected'] == True:
-                repo["protected"] = True
-            else:
-                repo["protected"] = False
+        resp.json()
+        if resp.status_code == 200:
+            repo["protected"] = True
+        else:
+            repo["protected"] = False
 
-    print(repos)
+    for active_bot in active_bot_repos:
+        resp = session.get(
+            f"{API_URL}/repos/edgelaboratories/{active_bot['name']}/pulls")
+        if resp.status_code == 200:
+            update_prs.append(active_bot['updated_at'])
+    print(
+        f'There are currently {len(update_prs)} update PRs in repos with an active dependabot')
+
+    first_table = table(repos)
+    print(first_table)
 
 
 if __name__ == "__main__":
