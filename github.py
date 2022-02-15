@@ -1,3 +1,5 @@
+from typing import List
+from http import HTTPStatus
 import requests
 import os
 from pprint import pprint
@@ -6,11 +8,56 @@ from tabulate import tabulate
 API_URL = "https://api.github.com"
 
 
-def table(repos):
+def table(repos: List[dict]):
     table = repos
     tabulate_table = tabulate(table, headers='keys', tablefmt="fancy_grid")
     return tabulate_table
-    # change this to return and print in main function, add docstring
+
+
+def count_dependabot_prs(session: requests.Session, repo_name: str) -> int:
+    """ Returns the number of pull request created by Dependabot
+    """
+    update_pr_count = 0
+    with session.get(f"{API_URL}/repos/edgelaboratories/{repo_name}/pulls") as resp:
+        resp.raise_for_status()
+        pulls: List[dict] = resp.json()
+
+    for pull in pulls:
+        if pull['user']['login'] == 'dependabot[bot]':
+            update_pr_count += 1
+
+    return update_pr_count
+
+
+def get_repo_info(session: requests.Session, content: dict) -> dict:
+    repo = {"name": content["name"]}
+
+    with session.get(f"{API_URL}/repos/edgelaboratories/{repo['name']}/contents/.github/dependabot.yml") as resp:
+        if resp.status_code == HTTPStatus.OK:
+            repo["active_debendabot"] = True
+            repo["dependabot_prs"] = count_dependabot_prs(
+                session, content["name"]
+            )
+        elif resp.status_code == HTTPStatus.NOT_FOUND:
+            repo["active_debendabot"] = False
+        else:
+            resp.raise_for_status()
+
+    if content["visibility"] == "private":
+        repo["visibility"] = "private"
+    else:
+        repo["visibility"] = "public"
+
+    repo["default_branch"] = content["default_branch"]
+    with session.get(f"{API_URL}/repos/edgelaboratories/{repo['name']}/branches/{repo['default_branch']}/protection") as resp:
+        if resp.status_code == HTTPStatus.OK:
+            repo["protected"] = True
+        elif resp.status_code == HTTPStatus.NOT_FOUND:
+            repo["protected"] = False
+        else:
+            resp.raise_for_status()
+
+    return repo
 
 
 def main():
@@ -22,50 +69,21 @@ def main():
 
     resp = session.get(f"{API_URL}/orgs/edgelaboratories/repos")
     resp.raise_for_status()
-    gh_repos = [r for r in resp.json() if r["name"] in [
-        "marketdata", "ops-tests", "ops-docs", "goliath", "fusion"]]
 
     repos = []
-    active_bot_repos = []
-    update_prs = []
-    for gh_repo in gh_repos:
-        repo = {"name": gh_repo["name"]}
-        repos.append(repo)
-        # pprint(gh_repos[0])
+    for content in resp.json():
+        # TODO: remove me when script is complete, it's just to test
+        if content["name"] not in ["marketdata", "ops-tests", "ops-docs", "goliath", "fusion"]:
+            continue
 
-        resp = session.get(
-            f"{API_URL}/repos/edgelaboratories/{repo['name']}/contents/.github/dependabot.yml")
-        if resp.status_code == 200:
-            repo["active_debendabot"] = True
-            active_bot_repos.append(gh_repo)
-        elif resp.status_code == 404:
-            repo["active_debendabot"] = False
-        else:
-            repo["active_debendabot"] = '403 Forbidden'
+        repos.append(get_repo_info(session, content))
 
-        if gh_repo["visibility"] == "private":
-            repo["visibility"] = "private"
-        else:
-            repo["visibility"] = "public"
-
-        resp = session.get(
-            f"{API_URL}/repos/edgelaboratories/{repo['name']}/branches")
-        resp.json()
-        if resp.status_code == 200:
-            repo["protected"] = True
-        else:
-            repo["protected"] = False
-
-    for active_bot in active_bot_repos:
-        resp = session.get(
-            f"{API_URL}/repos/edgelaboratories/{active_bot['name']}/pulls")
-        if resp.status_code == 200:
-            update_prs.append(active_bot['updated_at'])
     print(
-        f'There are currently {len(update_prs)} update PRs in repos with an active dependabot')
+        f'There are currently {len(active_bot_repos)} update PRs in repos with an active dependabot')
 
     first_table = table(repos)
     print(first_table)
+    # pprint(active_bot_repos[0])
 
 
 if __name__ == "__main__":
