@@ -61,7 +61,7 @@ def get_repo_info(session: requests.Session, content: dict) -> dict:
 
 
 def main():
-    """Uses the GitHub API to get the repo name, if the repo has an active dependabot, whether the repo is public or private, if the base branch is protected and appends to the list repos"""
+    """Calls the GitHub API to output the number of update PRs, the table data"""
     token = os.environ['GITHUB_TOKEN']
 
     session = requests.Session()
@@ -76,13 +76,19 @@ def main():
         if content["name"] not in ["marketdata", "ops-tests", "ops-docs", "goliath", "fusion"]:
             continue
 
-        repos.append(get_repo_info(session, content))
+        if content["archived"] == False:
+            repos.append(get_repo_info(session, content))
+    # pprint(content)
 
+    update_prs = count_dependabot_prs(session, content["name"])
     print(
-        f'There are currently {len(active_bot_repos)} update PRs in repos with an active dependabot')
+        f'There are currently {update_prs} update PRs in repos with an active dependabot')
+
+    get_repo_info(session, content)
 
     first_table = table(repos)
     print(first_table)
+
     # pprint(active_bot_repos[0])
 
 
