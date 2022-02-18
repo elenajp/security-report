@@ -13,9 +13,18 @@ from tabulate import tabulate
 API_URL = "https://api.github.com"
 
 
-def table(repos: List[dict]):
+def repo_info_table(repos: List[dict]):
+    """Puts into a table the repo name, if it has an active dependabot, the nuber of dependabot PRs, whether it is public or private, the default branch name and if it is protected"""
     table = repos
     tabulate_table = tabulate(table, headers='keys', tablefmt="fancy_grid")
+    return tabulate_table
+
+
+def bypassers_table(bypassers: List[list]):
+    """Puts into a table the username of who bypassed the branch protection, the repo bypassed and how many times it has been bypassed """
+    table = bypassers
+    tabulate_table = tabulate(
+        table, headers=["username", "repo", "times bypassed"], tablefmt="fancy_grid")
     return tabulate_table
 
 
@@ -35,7 +44,7 @@ def count_dependabot_prs(session: requests.Session, repo_name: str) -> int:
 
 
 def get_bypassers(session: requests.Session) -> dict[str, dict[str, int]]:
-    """Returns the name of the bypasser, the repo bypassed and how many times"""
+    """Returns the name of the bypasser, the repo bypassed and how many times it has been bypassed"""
     branch_bypasses = defaultdict(lambda: defaultdict(int))
 
     with session.get(f"{API_URL}/orgs/edgelaboratories/audit-log", params={"per_page": 100, "phrase": "action:protected_branch.policy_override"}) as resp:
@@ -47,35 +56,15 @@ def get_bypassers(session: requests.Session) -> dict[str, dict[str, int]]:
 
         for log in logs:
             if log['action'] == 'protected_branch.policy_override':
-                # branch_bypass_actors[log['actor']] = branch_bypass_actors.get(
-                #     log['actor'], 0) + 1
                 branch_bypasses[log['actor']][log['repo']] += 1
 
     return branch_bypasses
-    # TODO:
-    # count how many override per actor
-    # [
-    #   {
-    #     "repo": "edgelaboratories/stacks",
-    #     "actor": "vthiery",
-    #     "org": "edgelaboratories",
-    #     "branch": "refs/heads/master",
-    #     "action": "protected_branch.policy_override",
-    #     "@timestamp": 1641796648783,
-    #     "_document_id": "pCtl2n0J8njxnR8oUOEpuw",
-    #     "created_at": 1641796648783,
-    #     "actor_location": {
-    #     "country_code": "CH"
-    #     }
-    #   }
-    # ]
-    # {"vthiery": {"edgelaboratories/stacks": 3, "another": 5}}
+
     print(f"There are {len(logs)} to process")
-    print(f"Elena, do your job :p ")
 
 
 def get_repo_info(session: requests.Session, content: dict) -> dict:
-    """Returns """
+    """Returns info about the repos: if it has an active dependabot, the visibility, if the default branch is protected"""
     repo = {"name": content["name"]}
 
     with session.get(f"{API_URL}/repos/edgelaboratories/{repo['name']}/contents/.github/dependabot.yml") as resp:
@@ -150,6 +139,7 @@ def get_github_token() -> str:
 
 
 def check_repositories(session: requests.Session):
+    """Returns a list of Edgelabratories' repos which have not been archived"""
     resp = session.get(f"{API_URL}/orgs/edgelaboratories/repos")
     resp.raise_for_status()
 
@@ -178,9 +168,18 @@ def main():
     print(
         f'There are currently {update_prs} update PRs in repos with an active dependabot')
 
-    first_table = table(repos)
-    print(first_table)
-    get_bypassers(session)
+    bypassers = get_bypassers(session)
+
+    info_table = repo_info_table(repos)
+    print(info_table)
+
+    bypassers_list = []
+    for user, repos in bypassers.items():
+        for repo, count in repos.items():
+            bypassers_list.append([user, repo, count])
+
+    bypass_table = bypassers_table(bypassers_list)
+    print(bypass_table)
 
 
 if __name__ == "__main__":
