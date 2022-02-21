@@ -1,31 +1,35 @@
+import argparse
 import time
+from ast import arg
 from collections import defaultdict
+from email import parser
 from http import HTTPStatus
 from typing import List, cast
 
 import jwt
 import requests
+from parso import parse
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 from tabulate import tabulate
 
 API_URL = "https://api.github.com"
 
 
-def repo_info_table(repos: List[dict]):
+def repo_info_table(repos: List[dict], args: argparse.Namespace):
     """Puts into a table the repo name, if it has an active dependabot,
     the nuber of dependabot PRs, whether it is public or private,
     the default branch name and if it is protected
     """
-    table = repos
+    table = args.repo_table
     tabulate_table = tabulate(table, headers="keys", tablefmt="fancy_grid")
     return tabulate_table
 
 
-def bypassers_table(bypassers: List[list]):
+def bypassers_table(bypassers: List[list], args: argparse.Namespace):
     """Puts into a table the username of who bypassed the branch protection,
     the repo bypassed and how many times it has been bypassed
     """
-    table = bypassers
+    table = args.bypassers_table
     tabulate_table = tabulate(
         table, headers=["username", "repo", "times bypassed"], tablefmt="fancy_grid"
     )
@@ -114,9 +118,9 @@ def get_repo_info(session: requests.Session, content: dict) -> dict:
     return repo
 
 
-def get_github_token() -> str:
-    github_app_id = 172532
-    github_org = "edgelaboratories"
+def get_github_token(args: argparse.Namespace) -> str:
+    github_app_id = args.github_app_id
+    github_org = args.github_org
     now = int(time.time())
     payload = {
         # issued at time, 60 seconds in the past to allow for clock drift
@@ -127,7 +131,7 @@ def get_github_token() -> str:
         "iss": github_app_id,
     }
 
-    with open("./github.pem", "r") as f:
+    with open(args.github_key, "r") as f:
         private_key = f.read()
 
     token = jwt.encode(payload, private_key, algorithm="RS256")
@@ -183,9 +187,38 @@ def check_repositories(session: requests.Session) -> List[dict]:
 
 def main():
     """Calls the GitHub API to output the number of update PRs, the table data"""
+    parser = argparse.ArgumentParser(description="opens the github.pem file")
+    parser.add_argument(
+        "--github-key",
+        default="./github.pem",
+        type=str,
+        help="enter the path of your github.pem file",
+    )
+    parser.add_argument(
+        "--github-app-id",
+        default=172532,
+        type=int,
+        help="enter the github app id",
+    )
+
+    parser.add_argument(
+        "--github-org",
+        default="edgelaboratories",
+        type=str,
+        help="enter the gihub organization name",
+    )
+
+    parser.add_argument(
+        "--quiet",
+        help="Don't output anything, gather metrics only",
+        action="store_true",
+    )
+
+    args = parser.parse_args()
+
     registry = CollectorRegistry()
 
-    token = get_github_token()
+    token = get_github_token(args)
 
     session = requests.Session()
     session.headers["Authorization"] = f"Token {token}"
@@ -193,23 +226,20 @@ def main():
     repos = check_repositories(session)
     bypassers = get_bypassers(session, registry)
 
-    info_table = repo_info_table(repos)
-    print(info_table)
+    if not args.quiet:
+        info_table = repo_info_table(repos, args)
+        print(info_table)
 
-    bypassers_list = []
-    for user, repos in bypassers.items():
-        for repo, count in repos.items():
-            bypassers_list.append([user, repo, count])
+        bypassers_list = []
+        for user, repos in bypassers.items():
+            for repo, count in repos.items():
+                bypassers_list.append([user, repo, count])
 
-    bypass_table = bypassers_table(bypassers_list)
-    print(bypass_table)
+        bypass_table = bypassers_table(bypassers_list, args)
+        print(bypass_table)
 
     push_to_gateway(
         "prometheus-pushgateway.service.consul",
         job="security-checker",
         registry=registry,
     )
-
-
-if __name__ == "__main__":
-    main()
