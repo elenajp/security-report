@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 import requests
-from prometheus_client import CollectorRegistry
-from security_checker.github import count_dependabot_prs, get_bypassers
+from github_checker import count_dependabot_prs, get_bypassers
+from prometheus_client.registry import CollectorRegistry
 
 
 @pytest.mark.parametrize(
