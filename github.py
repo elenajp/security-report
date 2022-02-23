@@ -20,20 +20,23 @@ def repo_info_table(repos: List[dict], args: argparse.Namespace):
     the nuber of dependabot PRs, whether it is public or private,
     the default branch name and if it is protected
     """
-    table = args.repo_table
-    tabulate_table = tabulate(table, headers="keys", tablefmt="fancy_grid")
-    return tabulate_table
+    # table = args.repos
+    if not args.quiet:
+        table = repos
+        tabulate_table = tabulate(table, headers="keys", tablefmt="fancy_grid")
+        return tabulate_table
 
 
 def bypassers_table(bypassers: List[list], args: argparse.Namespace):
     """Puts into a table the username of who bypassed the branch protection,
     the repo bypassed and how many times it has been bypassed
     """
-    table = args.bypassers_table
-    tabulate_table = tabulate(
-        table, headers=["username", "repo", "times bypassed"], tablefmt="fancy_grid"
-    )
-    return tabulate_table
+    if not args.quiet:
+        table = bypassers
+        tabulate_table = tabulate(
+            table, headers=["username", "repo", "times bypassed"], tablefmt="fancy_grid"
+        )
+        return tabulate_table
 
 
 def count_dependabot_prs(session: requests.Session, repo_name: str) -> int:
@@ -162,14 +165,17 @@ def get_github_token(args: argparse.Namespace) -> str:
     return token
 
 
-def check_repositories(session: requests.Session) -> List[dict]:
+def check_repositories(
+    session: requests.Session, args: argparse.Namespace
+) -> List[dict]:
     """Returns a list of Edgelabratories' repos which have not been archived"""
     resp = session.get(f"{API_URL}/orgs/edgelaboratories/repos")
     resp.raise_for_status()
 
+    # repo_choice = list(args.repos)
     repos = []
     for content in resp.json():
-        # TODO: remove me when script is complete, it's just to test
+        #     # TODO: remove me when script is complete, it's just to test
         if content["name"] not in [
             "marketdata",
             "ops-tests",
@@ -179,15 +185,20 @@ def check_repositories(session: requests.Session) -> List[dict]:
         ]:
             continue
 
-        if not content["archived"]:
-            repos.append(get_repo_info(session, content))
+    # for repo in repo_choice:
+    #     if not repo["archived"]:
+    #         repos.append(get_repo_info(session, content))
+
+    if not content["archived"]:
+        repos.append(get_repo_info(session, content))
 
     return repos
 
 
 def main():
     """Calls the GitHub API to output the number of update PRs, the table data"""
-    parser = argparse.ArgumentParser(description="opens the github.pem file")
+    parser = argparse.ArgumentParser(
+        description="using argparse to replace hardcoding")
     parser.add_argument(
         "--github-key",
         default="./github.pem",
@@ -214,6 +225,13 @@ def main():
         action="store_true",
     )
 
+    # parser.add_argument(
+    #     "--repos",
+    #     required=True,
+    #     help="enter the name of the repos you would like to target",
+    #     type=str,
+    # )
+
     args = parser.parse_args()
 
     registry = CollectorRegistry()
@@ -223,7 +241,7 @@ def main():
     session = requests.Session()
     session.headers["Authorization"] = f"Token {token}"
 
-    repos = check_repositories(session)
+    repos = check_repositories(session, args)
     bypassers = get_bypassers(session, registry)
 
     if not args.quiet:
