@@ -1,16 +1,15 @@
-import argparse
-import time
-from ast import arg
-from collections import defaultdict
-from email import parser
-from http import HTTPStatus
-from typing import List, cast
-
-import jwt
-import requests
-from parso import parse
-from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 from tabulate import tabulate
+from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+import requests
+import jwt
+from typing import List, cast
+from http import HTTPStatus
+from datetime import date, timedelta
+from collections import defaultdict
+import time
+import argparse
+print("plop")
+
 
 API_URL = "https://api.github.com"
 
@@ -65,19 +64,21 @@ def get_bypassers(
     )
 
     branch_bypasses = defaultdict(lambda: defaultdict(int))
+    yesterday = date.today() - timedelta(days=1)
 
     with session.get(
         f"{API_URL}/orgs/edgelaboratories/audit-log",
-        params={"per_page": 100,
-                "phrase": "action:protected_branch.policy_override"},
+        params={
+            "per_page": 100,
+            "phrase": f"action:protected_branch.policy_override created:{yesterday}",
+        },
     ) as resp:
         resp.raise_for_status()
         next_page = resp.links.get("next")
         if next_page is not None:
-            print("TODO: There is other pages to process")
-        logs = resp.json()
+            raise NotImplementedError("Too lazy to manage pagination")
 
-        for log in logs:
+        for log in resp.json():
             gauge.labels(log["actor"], log["repo"]).inc()
             branch_bypasses[log["actor"]][log["repo"]] += 1
 
@@ -172,25 +173,12 @@ def check_repositories(
     resp = session.get(f"{API_URL}/orgs/edgelaboratories/repos")
     resp.raise_for_status()
 
-    # repo_choice = list(args.repos)
     repos = []
     for content in resp.json():
-        #     # TODO: remove me when script is complete, it's just to test
-        if content["name"] not in [
-            "marketdata",
-            "ops-tests",
-            "ops-docs",
-            "goliath",
-            "fusion",
-        ]:
-            continue
-
-    # for repo in repo_choice:
-    #     if not repo["archived"]:
-    #         repos.append(get_repo_info(session, content))
-
-    if not content["archived"]:
-        repos.append(get_repo_info(session, content))
+        if not content["archived"] and (
+            args.repos is None or content["name"] in args.repos
+        ):
+            repos.append(get_repo_info(session, content))
 
     return repos
 
@@ -225,12 +213,24 @@ def main():
         action="store_true",
     )
 
-    # parser.add_argument(
-    #     "--repos",
-    #     required=True,
-    #     help="enter the name of the repos you would like to target",
-    #     type=str,
-    # )
+    parser.add_argument(
+        "--metrics", help="Send metrics to Prometheus push-gateway", action="store_true"
+    )
+
+    parser.add_argument(
+        "--prometheus-gateway-host",
+        help="Hostname of the Prometheus push-gateway",
+        type=str,
+        default="prometheus-pushgateway.service.consul",
+    )
+
+    parser.add_argument(
+        "--repos",
+        nargs="+",
+        # required=True,
+        help="enter the name of the repos you would like to view",
+        type=str,
+    )
 
     args = parser.parse_args()
 
@@ -256,8 +256,9 @@ def main():
         bypass_table = bypassers_table(bypassers_list, args)
         print(bypass_table)
 
-    push_to_gateway(
-        "prometheus-pushgateway.service.consul",
-        job="security-checker",
-        registry=registry,
-    )
+    if args.metrics:
+        push_to_gateway(
+            args.prometheus_gateway_host,
+            job="security-checker",
+            registry=registry,
+        )

@@ -1,13 +1,16 @@
-from unittest.mock import MagicMock
+import argparse
+from unittest.mock import MagicMock, patch
 
+import github_checker
 import pytest
 import requests
-from github_checker import count_dependabot_prs, get_bypassers
+from github_checker import (check_repositories, count_dependabot_prs,
+                            get_bypassers)
 from prometheus_client.registry import CollectorRegistry
 
 
 @pytest.mark.parametrize(
-    "fake_pulls,expected_count",
+    "fake_pulls, expected_count",
     [
         # No pull requests
         ([], 0),
@@ -105,3 +108,80 @@ def test_get_bypasses(fake_audit_logs, expected_bypassers):
 
     mock_session.get().__enter__().json.return_value = fake_audit_logs
     assert get_bypassers(mock_session, mock_registry) == expected_bypassers
+
+
+@pytest.mark.parametrize(
+    "fake_repos, fake_repos_filter, expected_output",
+    [
+        ([], None, []),
+        (
+            [
+                {
+                    "name": "fusion",
+                    "visibility": "public",
+                    "default_branch": "master",
+                    "archived": True,
+                },
+                {
+                    "name": "ops-docs",
+                    "visibility": "private",
+                    "default_branch": "master",
+                    "archived": False,
+                },
+                {
+                    "name": "potato",
+                    "visibility": "private",
+                    "default_branch": "master",
+                    "archived": False,
+                },
+            ],
+            ["fusion", "ops-test", "ops-docs"],
+            [
+                {
+                    "name": "ops-docs",
+                }
+            ],
+        ),
+        (
+            [
+                {
+                    "name": "fusion",
+                    "visibility": "public",
+                    "default_branch": "master",
+                    "archived": True,
+                },
+                {
+                    "name": "ops-docs",
+                    "visibility": "private",
+                    "default_branch": "master",
+                    "archived": False,
+                },
+                {
+                    "name": "potato",
+                    "visibility": "private",
+                    "default_branch": "master",
+                    "archived": False,
+                },
+            ],
+            None,
+            [
+                {
+                    "name": "ops-docs",
+                },
+                {
+                    "name": "potato",
+                },
+            ],
+        ),
+    ],
+)
+def test_check_repositories(fake_repos, fake_repos_filter, expected_output):
+    mock_session = MagicMock(spec=requests.Session)
+    mock_session.get().json.return_value = fake_repos
+
+    args = argparse.Namespace(repos=fake_repos_filter)
+
+    with patch.object(
+        github_checker, "get_repo_info", side_effect=lambda _, c: {"name": c["name"]}
+    ):
+        assert check_repositories(mock_session, args) == expected_output
