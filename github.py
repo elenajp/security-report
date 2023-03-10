@@ -8,7 +8,6 @@ from datetime import date, timedelta
 from collections import defaultdict
 import time
 import argparse
-print("plop")
 
 
 API_URL = "https://api.github.com"
